@@ -631,6 +631,9 @@ def test_runs_hypothesis_in_parallel(pytester):
     pytester.makepyfile("""
     from hypothesis import given, strategies as st, settings, HealthCheck
 
+    import os
+    os.environ["HYPOTHESIS_NO_TRACEBACK_TRIM"] = "1"
+
     @given(a=st.none())
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     def test_uses_hypothesis(a, num_parallel_threads):
