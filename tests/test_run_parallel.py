@@ -1,5 +1,12 @@
 import os
 
+import pytest
+
+try:
+    import hypothesis
+except ImportError:
+    hypothesis = None
+
 
 def test_default_threads(pytester):
     """Make sure that pytest accepts our fixture."""
@@ -278,7 +285,7 @@ def test_num_parallel_threads_fixture(pytester):
             "*::test_should_yield_global_threads PARALLEL PASSED*",
             "*::test_should_yield_marker_threads PARALLEL PASSED*",
             "*::test_single_threaded PASSED*",
-            "*1 tests were not run in parallel because of use of "
+            "*1 test was not run in parallel because of use of "
             "thread-unsafe functionality, to list the tests that "
             "were not run in parallel, re-run while setting PYTEST_RUN_PARALLEL_VERBOSE=1"
             " in your shell environment",
@@ -512,7 +519,7 @@ def test_incompatible_test_item(pytester):
     def test_incompatible_item():
         assert True
     """)
-    result = pytester.runpytest("--parallel-threads=10", "-v")
+    result = pytester.runpytest("--parallel-threads=10", "-v", "-W", "default")
     result.stdout.fnmatch_lines(
         [
             "*::test_incompatible_item PASSED*",
@@ -617,3 +624,77 @@ def test_doctests_marked_thread_unsafe(pytester):
             "*::test_doctests_marked_thread_unsafe.txt PASSED*",
         ]
     )
+
+
+@pytest.mark.skipif(hypothesis is None, reason="hypothesis needs to be installed")
+def test_runs_hypothesis_in_parallel(pytester):
+    pytester.makepyfile("""
+    from hypothesis import given, strategies as st, settings, HealthCheck
+
+    @given(a=st.none())
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+    def test_uses_hypothesis(a, num_parallel_threads):
+        assert num_parallel_threads == 10
+    """)
+    result = pytester.runpytest("--parallel-threads=10", "-v")
+    result.stdout.fnmatch_lines(
+        [
+            "*::test_uses_hypothesis PARALLEL PASSED*",
+        ]
+    )
+
+
+def test_fail_warning_gil_enabled_during_execution(pytester):
+    test_name = "test_fail_warning_gil_enabled_during_execution"
+    pytester.makepyfile(f"""
+    import warnings
+
+    def {test_name}():
+        warnings.warn(
+            "The global interpreter lock (GIL) has been enabled to load module 'module'",
+            RuntimeWarning
+        )
+    """)
+    result = pytester.runpytest("-v", "-W", "default")
+    assert result.ret == 1
+    result.stdout.fnmatch_lines(
+        [
+            f"*GIL was dynamically re-enabled during test execution of '{test_name}.py::{test_name}' to load module 'module'*"
+        ]
+    )
+
+
+def test_fail_warning_gil_enabled_during_collection(pytester):
+    test_name = "test_fail_warning_gil_enabled_during_collection"
+    pytester.makepyfile(f"""
+    import warnings
+    warnings.warn(
+        "The global interpreter lock (GIL) has been enabled to load module 'module'",
+        RuntimeWarning
+    )
+
+    def {test_name}():
+        assert True
+    """)
+    result = pytester.runpytest("-v", "-W", "default")
+    assert result.ret == 1
+    result.stdout.fnmatch_lines(
+        [
+            "*GIL was dynamically re-enabled during test collection to load module 'module'*"
+        ]
+    )
+
+
+def test_warning_gil_enabled_ignore_option(pytester):
+    pytester.makepyfile("""
+    import warnings
+    warnings.warn(
+        "The global interpreter lock (GIL) has been enabled to load module 'module'",
+        RuntimeWarning
+    )
+
+    def test_warning_gil_enabled_ignore_option():
+        assert True
+    """)
+    result = pytester.runpytest("-v", "--ignore-gil-enabled", "-W", "default")
+    assert result.ret == 0
