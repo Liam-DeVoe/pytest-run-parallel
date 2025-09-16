@@ -16,15 +16,7 @@ jobs:
       fail-fast: false
       matrix:
         python-version:
-          - ['3.9', '3.9']
-          - ['3.10', '3.10']
-          - ['3.11', '3.11']
-          - ['3.12', '3.12']
-          - ['3.13', '3.13']
-          - ['3.13t', '3.13t']
-          - ['3.14-dev', '3.14']
           - ['3.14t-dev', '3.14t']
-          - ['pypy-3.9', 'pypy3.9']
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -35,5 +27,10 @@ jobs:
         run: |
           pip install tox
 
-      - name: Run test suite (${{ matrix.python-version[0] }})
-        run: tox -e ${{ matrix.python-version[1] }}
+      - name: Run test suite 100x (${{ matrix.python-version[0] }})
+        run: |
+          set -e
+          for i in $(seq 1 100); do
+            echo "=== Iteration $i/100 ==="
+            tox -e ${{ matrix.python-version[1] }}
+          done
